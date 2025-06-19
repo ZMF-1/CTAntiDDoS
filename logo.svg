@@ -1,0 +1,10 @@
+<svg width="320" height="120" viewBox="0 0 320 120" xmlns="http://www.w3.org/2000/svg">
+  <rect x="0" y="0" width="320" height="120" rx="24" fill="#222"/>
+  <text x="30" y="55" font-size="36" font-family="monospace" fill="#7fffd4" font-weight="bold">CTAntiDdos</text>
+  <text x="32" y="90" font-size="20" font-family="monospace" fill="#fff">by CodeTea</text>
+  <g>
+    <circle cx="270" cy="60" r="28" fill="#7fffd4" fill-opacity="0.15"/>
+    <path d="M260 60 Q270 40 280 60 Q270 80 260 60 Z" fill="#7fffd4"/>
+    <rect x="265" y="52" width="10" height="16" rx="2" fill="#222"/>
+  </g>
+</svg> 

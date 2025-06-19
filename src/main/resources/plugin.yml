@@ -1,0 +1,10 @@
+name: CTAntiDdos
+main: com.codetea.ctantiddos.CTAntiDdos
+version: 1.0.0
+api-version: 1.20
+author: CodeTea
+commands:
+  ctad:
+    description: CTAntiDdos 管理指令
+    usage: /ctad <help|reload|status|unban|update>
+    permission: ctad.admin 

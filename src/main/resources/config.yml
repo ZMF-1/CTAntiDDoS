@@ -1,0 +1,163 @@
+# CTAntiDdos 配置文件
+# 开发团队：CodeTea
+
+ip-limit:
+  enabled: true
+  max-connections: 3
+  interval-seconds: 10
+
+bot-detection:
+  enabled: true
+  threshold: 5 # N秒内N个新玩家
+  interval-seconds: 5
+
+auto-ban:
+  enabled: true
+  ban-seconds: 600
+
+log:
+  enabled: true
+  format: "[%time%] [%type%] %msg%"
+  max-size: 1048576 # 1MB
+  max-archives: 5
+
+external-firewall:
+  enabled: false
+  api-url: "http://your-firewall-api/ban?ip={ip}"
+  command: ""
+
+ddos-message:
+  enabled: true
+  text: "§c[CTAntiDdos] 检测到异常流量，服务器已启动防护措施！"
+
+whitelist:
+  ips:
+    - "127.0.0.1"
+    - "::1"
+
+lang: zh
+
+messages:
+  zh:
+    ip-limit: "§c[CTAntiDdos] 连接过于频繁，请稍后再试。"
+    bot-detected: "§c[CTAntiDdos] 检测到疑似Bot攻击，服务器已启动防护！"
+    banned: "§c[CTAntiDdos] 你的IP已被临时封禁。"
+    kick: "§c[CTAntiDdos] 防护触发，稍后再试。"
+    smartbot: "§c[CTAntiDdos] 检测到异常行为，已被防护系统踢出。"
+    help-header: "§a[CTAntiDdos] 可用指令："
+    help-reload: "§e/ctad reload §7- 重载配置"
+    help-status: "§e/ctad status §7- 查看防护状态"
+    help-unban: "§e/ctad unban <ip> §7- 解封指定IP"
+    help-help: "§e/ctad help §7- 显示帮助"
+    status-header: "§a[CTAntiDdos] 状态面板："
+    status-level: "§e防护等级：%level%"
+    status-tps: "§eTPS：%tps%"
+    status-online: "§e在线人数：%online%"
+    status-attack: "§e近10分钟攻击事件：%attack%"
+    status-banned: "§e当前被封禁IP：%banned%"
+    status-version: "§e插件版本：%version%  by CodeTea"
+  zh_tw:
+    ip-limit: "§c[CTAntiDdos] 連線過於頻繁，請稍後再試。"
+    bot-detected: "§c[CTAntiDdos] 偵測到疑似Bot攻擊，伺服器已啟動防護！"
+    banned: "§c[CTAntiDdos] 你的IP已被暫時封鎖。"
+    kick: "§c[CTAntiDdos] 防護觸發，請稍後再試。"
+    smartbot: "§c[CTAntiDdos] 偵測到異常行為，已被防護系統踢出。"
+    help-header: "§a[CTAntiDdos] 可用指令："
+    help-reload: "§e/ctad reload §7- 重新載入設定"
+    help-status: "§e/ctad status §7- 查看防護狀態"
+    help-unban: "§e/ctad unban <ip> §7- 解封指定IP"
+    help-help: "§e/ctad help §7- 顯示幫助"
+    status-header: "§a[CTAntiDdos] 狀態面板："
+    status-level: "§e防護等級：%level%"
+    status-tps: "§eTPS：%tps%"
+    status-online: "§e線上人數：%online%"
+    status-attack: "§e近10分鐘攻擊事件：%attack%"
+    status-banned: "§e當前被封禁IP：%banned%"
+    status-version: "§e插件版本：%version%  by CodeTea"
+  en:
+    ip-limit: "§c[CTAntiDdos] Too many connections, please try again later."
+    bot-detected: "§c[CTAntiDdos] Suspected bot attack detected, protection enabled!"
+    banned: "§c[CTAntiDdos] Your IP has been temporarily banned."
+    kick: "§c[CTAntiDdos] Protection triggered, please try again later."
+    smartbot: "§c[CTAntiDdos] Abnormal behavior detected, kicked by protection system."
+    help-header: "§a[CTAntiDdos] Available commands:"
+    help-reload: "§e/ctad reload §7- Reload config"
+    help-status: "§e/ctad status §7- Show protection status"
+    help-unban: "§e/ctad unban <ip> §7- Unban specified IP"
+    help-help: "§e/ctad help §7- Show help"
+    status-header: "§a[CTAntiDdos] Status Panel:"
+    status-level: "§eProtection Level: %level%"
+    status-tps: "§eTPS: %tps%"
+    status-online: "§eOnline Players: %online%"
+    status-attack: "§eAttacks in last 10 min: %attack%"
+    status-banned: "§eBanned IPs: %banned%"
+    status-version: "§ePlugin version: %version%  by CodeTea"
+  ja:
+    ip-limit: "§c[CTAntiDdos] 接続が多すぎます。しばらくしてから再試行してください。"
+    bot-detected: "§c[CTAntiDdos] ボット攻撃の疑いが検出されました。保護が有効になりました！"
+    banned: "§c[CTAntiDdos] あなたのIPは一時的に禁止されています。"
+    kick: "§c[CTAntiDdos] 保護が発動しました。しばらくしてから再試行してください。"
+    smartbot: "§c[CTAntiDdos] 異常な行動が検出され、保護システムによってキックされました。"
+    help-header: "§a[CTAntiDdos] 利用可能なコマンド:"
+    help-reload: "§e/ctad reload §7- 設定をリロード"
+    help-status: "§e/ctad status §7- 保護状況を表示"
+    help-unban: "§e/ctad unban <ip> §7- 指定IPのBAN解除"
+    help-help: "§e/ctad help §7- ヘルプを表示"
+    status-header: "§a[CTAntiDdos] 状態面板："
+    status-level: "§e防護等級：%level%"
+    status-tps: "§eTPS：%tps%"
+    status-online: "§e在线人数：%online%"
+    status-attack: "§e近10分钟攻击事件：%attack%"
+    status-banned: "§e当前被封禁IP：%banned%"
+    status-version: "§e插件版本：%version%  by CodeTea"
+  ko:
+    ip-limit: "§c[CTAntiDdos] 접속이 너무 많습니다. 잠시 후 다시 시도해주세요."
+    bot-detected: "§c[CTAntiDdos] 봇 공격이 감지되어 보호가 활성화되었습니다!"
+    banned: "§c[CTAntiDdos] 귀하의 IP가 일시적으로 차단되었습니다."
+    kick: "§c[CTAntiDdos] 보호가 발동되었습니다. 잠시 후 다시 시도해주세요."
+    smartbot: "§c[CTAntiDdos] 이상 행동이 감지되어 보호 시스템에 의해 강퇴되었습니다."
+    help-header: "§a[CTAntiDdos] 사용 가능한 명령어:"
+    help-reload: "§e/ctad reload §7- 설정 다시 불러오기"
+    help-status: "§e/ctad status §7- 보호 상태 보기"
+    help-unban: "§e/ctad unban <ip> §7- 지정 IP 차단 해제"
+    help-help: "§e/ctad help §7- 도움말 보기"
+    status-header: "§a[CTAntiDdos] 상태 패널:"
+    status-level: "§e방어 수준: %level%"
+    status-tps: "§eTPS: %tps%"
+    status-online: "§e온라인 플레이어: %online%"
+    status-attack: "§e마지막 10분 간의 공격 사건: %attack%"
+    status-banned: "§e차단된 IP: %banned%"
+    status-version: "§e플러그인 버전: %version%  by CodeTea"
+
+commands:
+  status-enabled: true
+  unban-enabled: true
+
+dynamic-protection:
+  enabled: true
+  tps-thresholds:
+    strict: 18.0
+    normal: 19.0
+  player-thresholds:
+    strict: 100
+    normal: 50
+  attack-rate-thresholds:
+    strict: 10
+    normal: 3
+  # 各模式下的限流参数
+  ip-limit:
+    strict: 2
+    normal: 3
+    relaxed: 5
+  bot-threshold:
+    strict: 3
+    normal: 5
+    relaxed: 8
+
+smart-bot-detection:
+  enabled: true
+  monitor-seconds: 15
+  require-move: true
+  require-chat: false
+  require-interact: false
+  kick-message: "§c[CTAntiDdos] 检测到异常行为，已被防护系统踢出。" 
