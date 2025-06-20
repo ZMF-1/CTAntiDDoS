@@ -135,6 +135,7 @@ commands:
 
 dynamic-protection:
   enabled: true
+  check-interval-seconds: 30
   tps-thresholds:
     strict: 18.0
     normal: 19.0
@@ -160,4 +161,9 @@ smart-bot-detection:
   require-move: true
   require-chat: false
   require-interact: false
+  min-score: 2
+  score:
+    move: 2
+    chat: 1
+    interact: 1
   kick-message: "§c[CTAntiDdos] 检测到异常行为，已被防护系统踢出。" 

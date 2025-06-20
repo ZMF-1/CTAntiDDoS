@@ -28,6 +28,7 @@ import java.net.URL;
 import java.io.File;
 import java.io.InputStreamReader;
 import java.io.BufferedReader;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 public class CTAntiDdos extends JavaPlugin implements Listener, TabExecutor, TabCompleter {
     private FileConfiguration config;
@@ -50,10 +51,12 @@ public class CTAntiDdos extends JavaPlugin implements Listener, TabExecutor, Tab
         final String type;
         AttackEvent(String type) { this.time = System.currentTimeMillis(); this.type = type; }
     }
-    private final List<AttackEvent> attackEvents = Collections.synchronizedList(new ArrayList<>());
+    private final ConcurrentLinkedQueue<AttackEvent> attackEvents = new ConcurrentLinkedQueue<>();
     private boolean versionWarned = false;
     private String latestVersion = null;
     private String updateUrl = "https://api.github.com/repos/ZMF-1/CTAntiDdos/releases/latest";
+    private double cachedTps = 20.0;
+    private long lastTpsUpdate = 0;
 
     @Override
     public void onEnable() {
@@ -83,6 +86,8 @@ public class CTAntiDdos extends JavaPlugin implements Listener, TabExecutor, Tab
                 fileLogger.addHandler(fh);
             } catch (IOException e) {
                 getLogger().warning("日志文件初始化失败: " + e.getMessage());
+                e.printStackTrace();
+                fileLogger = null; // 降级为控制台日志
             }
         }
     }
@@ -94,11 +99,12 @@ public class CTAntiDdos extends JavaPlugin implements Listener, TabExecutor, Tab
 
     private void startDynamicProtectionTask() {
         if (!config.getBoolean("dynamic-protection.enabled", false)) return;
-        Bukkit.getScheduler().runTaskTimer(this, this::updateProtectionLevel, 20L, 20L * 10); // 每10秒检测一次
+        int interval = config.getInt("dynamic-protection.check-interval-seconds", 30);
+        Bukkit.getScheduler().runTaskTimer(this, this::updateProtectionLevel, 20L, 20L * interval); // 检测周期可配置
     }
 
     private void updateProtectionLevel() {
-        double tps = getServerTps();
+        double tps = getCachedTps();
         int online = Bukkit.getOnlinePlayers().size();
         int attackRate = recentAttackCount;
         recentAttackCount = 0;
@@ -118,6 +124,15 @@ public class CTAntiDdos extends JavaPlugin implements Listener, TabExecutor, Tab
             currentLevel = level;
             log("动态防护切换至: " + currentLevel, "DYN");
         }
+    }
+
+    private double getCachedTps() {
+        long now = System.currentTimeMillis();
+        if (now - lastTpsUpdate > 10000) { // 10秒缓存
+            cachedTps = getServerTps();
+            lastTpsUpdate = now;
+        }
+        return cachedTps;
     }
 
     private double getServerTps() {
@@ -259,11 +274,21 @@ public class CTAntiDdos extends JavaPlugin implements Listener, TabExecutor, Tab
 
     private void log(String msg, String type) {
         if (config.getBoolean("log.enabled", true) && fileLogger != null) {
-            if (logManager != null) logManager.checkRotate();
+            if (logManager != null) {
+                try {
+                    logManager.checkRotate();
+                } catch (Exception e) {
+                    getLogger().warning("日志归档异常: " + e.getMessage());
+                    e.printStackTrace();
+                }
+            }
             String format = config.getString("log.format", "[%time%] [%type%] %msg%");
             String out = format.replace("%time%", new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new java.util.Date()))
                     .replace("%type%", type).replace("%msg%", msg);
             fileLogger.info(out);
+        } else {
+            // 降级为控制台日志
+            getLogger().info("[降级日志] [" + type + "] " + msg);
         }
     }
 
@@ -388,10 +413,18 @@ public class CTAntiDdos extends JavaPlugin implements Listener, TabExecutor, Tab
         boolean requireMove = config.getBoolean("smart-bot-detection.require-move", true);
         boolean requireChat = config.getBoolean("smart-bot-detection.require-chat", false);
         boolean requireInteract = config.getBoolean("smart-bot-detection.require-interact", false);
+        int minScore = config.getInt("smart-bot-detection.min-score", 2);
+        int moveScore = config.getInt("smart-bot-detection.score.move", 2);
+        int chatScore = config.getInt("smart-bot-detection.score.chat", 1);
+        int interactScore = config.getInt("smart-bot-detection.score.interact", 1);
         boolean moved = smartBotMoved.contains(name);
         boolean chatted = smartBotChatted.contains(name);
         boolean interacted = smartBotInteracted.contains(name);
-        boolean kick = (requireMove && !moved) || (requireChat && !chatted) || (requireInteract && !interacted);
+        int score = 0;
+        if (moved) score += moveScore;
+        if (chatted) score += chatScore;
+        if (interacted) score += interactScore;
+        boolean kick = (requireMove && !moved) || (requireChat && !chatted) || (requireInteract && !interacted) || (score < minScore);
         if (kick) {
             p.kickPlayer(getMsg("smartbot"));
             log("智能Bot检测踢出: " + name + " (" + p.getAddress() + ")", "SMARTBOT");
@@ -408,7 +441,10 @@ public class CTAntiDdos extends JavaPlugin implements Listener, TabExecutor, Tab
 
     private int countRecentAttacks() {
         long now = System.currentTimeMillis();
-        attackEvents.removeIf(e -> e.time < now - 10 * 60 * 1000L);
+        long threshold = now - 10 * 60 * 1000L;
+        while (!attackEvents.isEmpty() && attackEvents.peek().time < threshold) {
+            attackEvents.poll();
+        }
         return attackEvents.size();
     }
 
@@ -442,7 +478,10 @@ public class CTAntiDdos extends JavaPlugin implements Listener, TabExecutor, Tab
                     int end = json.indexOf('"', start);
                     latestVersion = json.substring(start, end);
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception e) {
+                getLogger().warning("自动更新检测失败: " + e.getMessage());
+                e.printStackTrace();
+            }
         });
     }
 } 
