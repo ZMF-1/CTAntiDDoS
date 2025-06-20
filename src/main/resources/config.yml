@@ -17,6 +17,7 @@ auto-ban:
 
 log:
   enabled: true
+  level: INFO
   format: "[%time%] [%type%] %msg%"
   max-size: 1048576 # 1MB
   max-archives: 5

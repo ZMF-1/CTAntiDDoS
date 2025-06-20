@@ -5,7 +5,6 @@ import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.command.TabExecutor;
-import org.bukkit.command.TabCompleter;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -29,8 +28,10 @@ import java.io.File;
 import java.io.InputStreamReader;
 import java.io.BufferedReader;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.io.StringWriter;
+import java.io.PrintWriter;
 
-public class CTAntiDdos extends JavaPlugin implements Listener, TabExecutor, TabCompleter {
+public class CTAntiDdos extends JavaPlugin implements Listener, TabExecutor {
     private FileConfiguration config;
     private final Map<String, List<Long>> ipConnectTimes = new ConcurrentHashMap<>();
     private final Set<String> bannedIps = Collections.newSetFromMap(new ConcurrentHashMap<>());
@@ -69,6 +70,7 @@ public class CTAntiDdos extends JavaPlugin implements Listener, TabExecutor, Tab
         getLogger().info("CTAntiDdos by CodeTea 已启用");
         setupFileLogger();
         startDynamicProtectionTask();
+        startCleanupTask();
         checkCompatibility();
         checkUpdateAsync();
     }
@@ -126,23 +128,13 @@ public class CTAntiDdos extends JavaPlugin implements Listener, TabExecutor, Tab
         }
     }
 
-    private double getCachedTps() {
-        long now = System.currentTimeMillis();
-        if (now - lastTpsUpdate > 10000) { // 10秒缓存
-            cachedTps = getServerTps();
-            lastTpsUpdate = now;
-        }
-        return cachedTps;
-    }
-
-    private double getServerTps() {
-        try {
-            Object minecraftServer = Bukkit.getServer().getClass().getMethod("getServer").invoke(Bukkit.getServer());
-            double[] tps = (double[]) minecraftServer.getClass().getField("recentTps").get(minecraftServer);
-            return tps[0];
-        } catch (Exception e) {
-            return 20.0;
-        }
+    private void startCleanupTask() {
+        Bukkit.getScheduler().runTaskTimerAsynchronously(this, () -> {
+            long now = System.currentTimeMillis();
+            ipConnectTimes.values().forEach(times -> times.removeIf(t -> t < now - config.getInt("ip-limit.interval-seconds", 10) * 1000L));
+            int botInterval = config.getInt("bot-detection.interval-seconds", 5);
+            joinTimestamps.keySet().removeIf(t -> t < (now / 1000L) - botInterval);
+        }, 20L, 20L * 30); // 每30秒清理一次
     }
 
     @EventHandler
@@ -156,10 +148,10 @@ public class CTAntiDdos extends JavaPlugin implements Listener, TabExecutor, Tab
         ipConnectTimes.putIfAbsent(ip, new ArrayList<>());
         List<Long> times = ipConnectTimes.get(ip);
         times.add(now);
-        times.removeIf(t -> t < now - interval * 1000L);
+        // 不再removeIf，交由定时任务清理
         if (times.size() > max) {
             event.disallow(PlayerLoginEvent.Result.KICK_OTHER, getMsg("ip-limit"));
-            log("IP限流: " + ip, "LIMIT");
+            log("IP限流: " + ip, "LIMIT", LogLevel.WARNING, null);
             autoBan(ip, "IP限流");
             recentAttackCount++;
             return;
@@ -187,7 +179,7 @@ public class CTAntiDdos extends JavaPlugin implements Listener, TabExecutor, Tab
         int interval = config.getInt("bot-detection.interval-seconds", 5);
         int threshold = getDynamicBotThreshold();
         joinTimestamps.put(now, joinTimestamps.getOrDefault(now, 0) + 1);
-        joinTimestamps.keySet().removeIf(t -> t < now - interval);
+        // 不再removeIf，交由定时任务清理
         int sum = joinTimestamps.values().stream().mapToInt(i -> i).sum();
         if (sum >= threshold) {
             Bukkit.broadcastMessage(getMsg("bot-detected"));
@@ -195,7 +187,7 @@ public class CTAntiDdos extends JavaPlugin implements Listener, TabExecutor, Tab
                 String pip = player.getAddress().getAddress().getHostAddress();
                 if (!player.hasPermission("ctad.bypass") && !whitelistManager.isIpWhitelisted(pip)) {
                     player.kickPlayer(getMsg("kick"));
-                    log("Bot检测踢出: " + player.getName() + " (" + pip + ")", "BOT");
+                    log("Bot检测踢出: " + player.getName() + " (" + pip + ")", "BOT", LogLevel.WARNING, null);
                     autoBan(pip, "Bot检测");
                 }
             }
@@ -240,31 +232,50 @@ public class CTAntiDdos extends JavaPlugin implements Listener, TabExecutor, Tab
         smartBotChatted.add(event.getPlayer().getName());
     }
 
+    private boolean isValidIp(String ip) {
+        return ip.matches("^(?:[0-9]{1,3}\\.){3}[0-9]{1,3}$") || ip.matches("^[a-fA-F0-9:]+$|");
+    }
+    private boolean isValidUrl(String url) {
+        return url.matches("^https?://[\\w\\-\\.]+(:\\d+)?(/[\\w\\-\\./?%&=]*)?$") && url.length() < 256;
+    }
+    private boolean isSafeCommand(String cmd) {
+        // 只允许 {ip} 占位符，禁止分号、&&、|、$、反引号等危险字符
+        return cmd != null && !cmd.isEmpty() && !cmd.matches(".*[;&|`$].*") && cmd.contains("{ip}");
+    }
+
     private void autoBan(String ip, String reason) {
         if (!config.getBoolean("auto-ban.enabled", true) || whitelistManager.isIpWhitelisted(ip)) return;
         bannedIps.add(ip);
-        log("自动封禁IP: " + ip + " 原因: " + reason, "BAN");
+        log("自动封禁IP: " + ip + " 原因: " + reason, "BAN", LogLevel.WARNING, null);
         // 外部API
         if (config.getBoolean("external-firewall.enabled", false)) {
             String api = config.getString("external-firewall.api-url", "");
-            if (api != null && !api.isEmpty()) {
+            if (api != null && !api.isEmpty() && isValidUrl(api)) {
                 String url = api.replace("{ip}", ip);
                 try {
                     HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
                     conn.setRequestMethod("GET");
                     conn.setConnectTimeout(2000);
+                    int code = conn.getResponseCode();
+                    if (code != 200) {
+                        log("外部API调用失败，HTTP状态码: " + code, "API", LogLevel.ERROR, null);
+                    }
                     conn.getInputStream().close();
                 } catch (Exception e) {
-                    log("外部API调用失败: " + e.getMessage(), "API");
+                    log("外部API调用异常: " + e.getMessage(), "API", LogLevel.ERROR, e);
                 }
+            } else {
+                log("外部API URL不合法: " + api, "API", LogLevel.ERROR, null);
             }
             String cmd = config.getString("external-firewall.command", "");
-            if (cmd != null && !cmd.isEmpty()) {
+            if (isSafeCommand(cmd)) {
                 try {
                     Runtime.getRuntime().exec(cmd.replace("{ip}", ip));
                 } catch (IOException e) {
-                    log("外部命令执行失败: " + e.getMessage(), "API");
+                    log("外部命令执行失败: " + e.getMessage(), "API", LogLevel.ERROR, e);
                 }
+            } else if (cmd != null && !cmd.isEmpty()) {
+                log("外部命令不安全或格式不合法: " + cmd, "API", LogLevel.ERROR, null);
             }
         }
         // 自动解封
@@ -272,23 +283,27 @@ public class CTAntiDdos extends JavaPlugin implements Listener, TabExecutor, Tab
         Bukkit.getScheduler().runTaskLater(this, () -> bannedIps.remove(ip), banSec * 20L);
     }
 
-    private void log(String msg, String type) {
-        if (config.getBoolean("log.enabled", true) && fileLogger != null) {
+    private void log(String msg, String type) { log(msg, type, LogLevel.INFO, null); }
+    private void log(String msg, String type, LogLevel level, Throwable ex) {
+        if (!config.getBoolean("log.enabled", true)) return;
+        LogLevel configLevel = getLogLevel();
+        if (level.ordinal() < configLevel.ordinal()) return;
+        String format = config.getString("log.format", "[%time%] [%type%] %msg%");
+        String out = format.replace("%time%", new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new java.util.Date()))
+                .replace("%type%", type).replace("%msg%", msg);
+        if (fileLogger != null) {
             if (logManager != null) {
-                try {
-                    logManager.checkRotate();
-                } catch (Exception e) {
-                    getLogger().warning("日志归档异常: " + e.getMessage());
-                    e.printStackTrace();
-                }
+                try { logManager.checkRotate(); } catch (Exception e) { getLogger().warning("日志归档异常: " + e.getMessage()); }
             }
-            String format = config.getString("log.format", "[%time%] [%type%] %msg%");
-            String out = format.replace("%time%", new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new java.util.Date()))
-                    .replace("%type%", type).replace("%msg%", msg);
-            fileLogger.info(out);
+            if (level == LogLevel.ERROR) fileLogger.severe(out); else if (level == LogLevel.WARNING) fileLogger.warning(out); else fileLogger.info(out);
+            if (ex != null) {
+                StringWriter sw = new StringWriter();
+                ex.printStackTrace(new PrintWriter(sw));
+                fileLogger.severe(sw.toString());
+            }
         } else {
-            // 降级为控制台日志
             getLogger().info("[降级日志] [" + type + "] " + msg);
+            if (ex != null) ex.printStackTrace();
         }
     }
 
@@ -365,17 +380,6 @@ public class CTAntiDdos extends JavaPlugin implements Listener, TabExecutor, Tab
         sender.sendMessage(getMsg("help-unban"));
         sender.sendMessage(getMsg("help-help"));
         return true;
-    }
-
-    @Override
-    public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
-        if (args.length == 1) {
-            return Arrays.asList("help", "reload", "status", "unban");
-        }
-        if (args.length == 2 && args[0].equalsIgnoreCase("unban")) {
-            return new ArrayList<>(bannedIps);
-        }
-        return Collections.emptyList();
     }
 
     private int getDynamicIpLimit() {
@@ -466,6 +470,17 @@ public class CTAntiDdos extends JavaPlugin implements Listener, TabExecutor, Tab
                 HttpURLConnection conn = (HttpURLConnection) new java.net.URL(updateUrl).openConnection();
                 conn.setRequestProperty("Accept", "application/vnd.github.v3+json");
                 conn.setConnectTimeout(3000);
+                int code = conn.getResponseCode();
+                if (code == 403) {
+                    log("GitHub API请求被拒绝（403），可能触发了速率限制。请稍后再试。", "UPDATE", LogLevel.WARNING, null);
+                    return;
+                } else if (code == 429) {
+                    log("GitHub API请求过多（429），请降低请求频率。", "UPDATE", LogLevel.WARNING, null);
+                    return;
+                } else if (code != 200) {
+                    log("GitHub API请求失败，HTTP状态码: " + code, "UPDATE", LogLevel.ERROR, null);
+                    return;
+                }
                 BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
                 StringBuilder sb = new StringBuilder();
                 String line;
@@ -479,9 +494,40 @@ public class CTAntiDdos extends JavaPlugin implements Listener, TabExecutor, Tab
                     latestVersion = json.substring(start, end);
                 }
             } catch (Exception e) {
-                getLogger().warning("自动更新检测失败: " + e.getMessage());
-                e.printStackTrace();
+                log("自动更新检测异常: " + e.getMessage(), "UPDATE", LogLevel.ERROR, e);
             }
         });
+    }
+
+    // 日志级别枚举
+    public enum LogLevel { INFO, WARNING, ERROR }
+    private LogLevel getLogLevel() {
+        String level = config.getString("log.level", "INFO").toUpperCase();
+        try { return LogLevel.valueOf(level); } catch (Exception e) { return LogLevel.INFO; }
+    }
+
+    private double getCachedTps() {
+        long now = System.currentTimeMillis();
+        if (now - lastTpsUpdate > 30000) { // 30秒缓存
+            cachedTps = getServerTps();
+            lastTpsUpdate = now;
+        }
+        return cachedTps;
+    }
+
+    private double getServerTps() {
+        try {
+            // Paper API优先
+            double[] tpsArr = Bukkit.getServer().getTPS();
+            if (tpsArr != null && tpsArr.length > 0) return tpsArr[0];
+        } catch (Throwable ignore) {}
+        try {
+            Object minecraftServer = Bukkit.getServer().getClass().getMethod("getServer").invoke(Bukkit.getServer());
+            double[] tps = (double[]) minecraftServer.getClass().getField("recentTps").get(minecraftServer);
+            return tps[0];
+        } catch (Exception e) {
+            log("获取TPS失败: " + e.getMessage(), "TPS", LogLevel.WARNING, e);
+            return 20.0;
+        }
     }
 } 
